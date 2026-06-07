@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>기숙사 전자기기 체크</title>
+    <!-- PWA 설정 -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#e74c3c">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="태하관전자기기관리v1">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg:#eef1f5; --panel:#ffffff; --ink:#2c3e50; --muted:#7f8c8d;
+    --line:#e2e8f0; --blue:#2980b9; --blue-l:#3498db;
+    --green:#27ae60; --green-d:#219150; --red:#e74c3c; --red-d:#c0392b;
+    --amber:#f39c12; --amber-d:#d35400; --purple:#8e44ad; --slate:#34495e;
+  }
+  *{box-sizing:border-box; outline:none; -webkit-tap-highlight-color:transparent;}
+  html,body{
+    position:fixed; top:0; left:0; right:0; bottom:0; width:100%; height:100%;
+    margin:0; padding:0; overflow:hidden; background:var(--bg);
+    font-family:'Malgun Gothic','맑은 고딕','Apple SD Gothic Neo',sans-serif;
+    color:var(--ink); user-select:none; -webkit-user-select:none; touch-action:none;
+  }
+  .app{display:flex; flex-direction:column; width:100%; height:100%; padding:6px 8px 8px;}
+
+  /* ── 상단 툴바(헤더+메뉴 통합) ── */
+  .topbar{flex-shrink:0; display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:5px;}
+  .topbar.ownmode{background:#fff4e0; border-radius:10px; padding:3px 6px; outline:2px solid #f5cb8a;}
+  .brand{font-size:16px; font-weight:900; letter-spacing:-0.5px; white-space:nowrap;}
+  .datechip{font-size:13px; font-weight:800; color:#fff; background:var(--blue); padding:5px 11px; border-radius:8px; white-space:nowrap; cursor:pointer;}
+  .logchip{font-size:12px; font-weight:800; padding:5px 10px; border-radius:8px; white-space:nowrap; cursor:pointer; border:1.5px solid transparent;}
+  .logchip.off{background:#fdecea; color:var(--red-d); border-color:#f3b7b1;}
+  .logchip.on{background:#eafaf1; color:var(--green-d); border-color:#86d6aa;}
+  .grow{flex:1;}
+  .tbtn{padding:8px 13px; border:none; border-radius:9px; font-size:13px; font-weight:800; letter-spacing:-0.4px;
+        background:#fff; color:var(--ink); box-shadow:0 1px 3px rgba(0,0,0,.08); cursor:pointer; white-space:nowrap;}
+  .tbtn:active{transform:scale(.96);}
+  .tbtn.blue{background:var(--blue); color:#fff;}
+  .tbtn.red{background:#fdecea; color:var(--red-d);}
+  .tbtn.amber{background:#fef5e7; color:var(--amber-d);}
+  .tbtn.amber.active{background:var(--amber); color:#fff;}
+  .tbtn.purple{background:#f4ecf7; color:var(--purple);}
+  .tbtn.icon{font-size:17px; padding:7px 11px; line-height:1;}
+
+  /* ── 학년 탭 (3/4 크기) ── */
+  .tabs{flex-shrink:0; display:flex; gap:6px; margin-bottom:5px;}
+  .tab{flex:1; padding:7px 4px; border:none; border-radius:9px 9px 0 0; font-size:13px; font-weight:900;
+       background:#dfe6ee; color:#7a8a99; cursor:pointer; position:relative;}
+  .tab .cnt{display:block; font-size:10px; font-weight:700; margin-top:1px; opacity:.9;}
+  .tab.active{background:var(--panel); color:var(--blue); box-shadow:0 -2px 6px rgba(0,0,0,.05);}
+  .tab.active .cnt{color:var(--muted);}
+
+  /* ── 요약바 ── */
+  .summary{flex-shrink:0; display:flex; gap:8px; padding:7px 10px; background:var(--panel);
+           border-bottom:1px solid var(--line); font-size:13px; font-weight:800; flex-wrap:wrap; align-items:center;}
+  .summary .s-tag{padding:3px 9px; border-radius:6px;}
+  .s-target{background:#eaf2f8; color:var(--blue);}
+  .s-done{background:#eafaf1; color:var(--green);}
+  .s-miss{background:#fdecea; color:var(--red-d);}
+  .s-out{background:#f0f1f3; color:var(--muted);}
+  .summary .hint{font-size:11px; font-weight:600; color:var(--muted);}
+
+  /* ── 리스트 영역 (스크롤) ── */
+  /* 리스트 영역: 스크롤 없음, 화면을 꽉 채우는 타일 그리드 */
+  .listwrap{flex:1; min-height:0; overflow:hidden; background:var(--panel);
+            border-radius:0 0 12px 12px; box-shadow:0 4px 10px rgba(0,0,0,.05); padding:6px;}
+  .empty{height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--muted); text-align:center; padding:30px;}
+  .empty .big{font-size:46px; margin-bottom:14px;}
+  .empty h3{margin:0 0 8px; color:var(--ink); font-size:18px;}
+  .empty p{margin:3px 0; font-size:13px; line-height:1.6;}
+
+  /* 그리드: 학번순(세로 우선) 자동 배치, 행 수 고정으로 스크롤 제거 */
+  .grid{display:grid; height:100%; gap:5px; grid-auto-flow:column; grid-auto-columns:1fr; align-content:stretch;}
+
+  .tile{display:flex; flex-direction:column; border:1px solid var(--line); border-radius:8px; overflow:hidden;
+        background:#fff; min-height:0;}
+  .tile .top{display:flex; align-items:baseline; gap:4px; padding:3px 6px 1px; min-width:0;}
+  .tile .sid{font-size:var(--meta,10px); color:var(--muted); font-weight:800; flex-shrink:0;}
+  .tile .nm{font-size:var(--nm,14px); font-weight:800; line-height:1.05; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .tile .meta{font-size:var(--meta,10px); color:var(--slate); font-weight:700; white-space:nowrap; margin-left:auto; flex-shrink:0;}
+  .tile .chips{display:grid; grid-template-columns:repeat(3,1fr); gap:3px; flex:1; padding:2px 4px 4px; min-height:0;}
+
+  .chip{display:flex; align-items:center; justify-content:center; border-radius:6px; border:1.5px solid var(--line);
+        font-size:var(--chip,13px); font-weight:800; cursor:pointer; user-select:none; transition:transform .07s; line-height:1; gap:2px;}
+  .chip:active{transform:scale(.92);}
+  .chip .lab{opacity:.95;}
+  .chip.done{background:#f0f1f3; border-color:#e6e9ec; color:#9aa0a8;}                 /* 보유·제출(기본) = 회색 */
+  .chip.miss{background:var(--red); border-color:var(--red-d); color:#fff; box-shadow:0 0 0 2px #fadbd8 inset;} /* 미제출 = 빨강 */
+  .chip.none{background:#eafaf1; border-color:#86d6aa; color:var(--green-d); cursor:default;} /* 미보유 = 녹색 */
+  .chip.own {background:#f0f1f3; border-color:#e6e9ec; color:#aab0b8;}                 /* 보유설정-보유 (색 교체) */
+  .chip.notown{background:#eafaf1; border-color:#86d6aa; color:var(--green-d);}         /* 보유설정-미보유 (색 교체) */
+
+  /* 부재(체크 제외) 타일 */
+  .tile.leave{background:repeating-linear-gradient(45deg,#f3f4f6,#f3f4f6 7px,#e9ebee 7px,#e9ebee 14px);}
+  .tile.home{background:#fdf3da; border-color:#f0d18a;}
+  .tile.out .nm{color:#8a93a0; font-weight:700;}
+  .tile .outlbl{flex:1; display:flex; align-items:center; justify-content:center; text-align:center; font-size:var(--chip,12px); font-weight:800; padding:2px; line-height:1.1;}
+  .tile.leave .outlbl{color:#79828f;}
+  .tile.home .outlbl{color:var(--amber-d);}
+
+  /* ── 모달 ── */
+  .modal{display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); backdrop-filter:blur(3px);
+         justify-content:center; align-items:center; z-index:1000; padding:14px;}
+  .modal.show{display:flex;}
+  .mcard{background:#fff; border-radius:16px; width:100%; max-width:520px; max-height:88vh; display:flex; flex-direction:column;
+         box-shadow:0 12px 30px rgba(0,0,0,.25); overflow:hidden;}
+  .mcard h2{margin:0; padding:16px 20px; font-size:17px; font-weight:900; border-bottom:2px solid #f0f3f6; text-align:center;}
+  .mbody{padding:16px 18px; overflow-y:auto; -webkit-overflow-scrolling:touch; font-size:14px; line-height:1.55;}
+  .mfoot{padding:12px 16px; border-top:1px solid #f0f3f6;}
+  .pbtn{display:block; width:100%; padding:13px; border:none; border-radius:10px; font-size:14px; font-weight:800; color:#fff; cursor:pointer; margin-bottom:8px;}
+  .pbtn:active{transform:scale(.99);}
+  .pbtn.gray{background:#a0aec0;} .pbtn.green{background:var(--green);} .pbtn.blue{background:var(--blue);}
+  .pbtn.amber{background:var(--amber);} .pbtn.purple{background:var(--purple);} .pbtn.red{background:var(--red);} .pbtn.slate{background:var(--slate);}
+  .note{background:#eaf4fb; border:1px solid #bfe0f5; color:var(--blue); padding:10px 12px; border-radius:9px; font-size:12px; line-height:1.5; margin-bottom:12px;}
+  .note.warn{background:#fff7e6; border-color:#f5d384; color:var(--amber-d);}
+  .secbox{border:1px solid var(--line); border-radius:10px; padding:13px; margin-bottom:12px;}
+  .secbox .st{font-weight:900; margin-bottom:9px; font-size:14px;}
+
+  .miss-grp{margin-bottom:14px;}
+  .miss-grp .g{font-weight:900; color:var(--blue); border-bottom:1px solid var(--line); padding-bottom:4px; margin-bottom:6px;}
+  .miss-row{display:flex; justify-content:space-between; gap:10px; padding:4px 2px; font-size:13px; border-bottom:1px dashed #eef1f4;}
+  .miss-row .m-name{font-weight:700;}
+  .miss-row .m-dev{color:var(--red-d); font-weight:800; white-space:nowrap;}
+  .pill{display:inline-block; background:#fdecea; color:var(--red-d); border-radius:5px; padding:1px 6px; font-size:11px; margin-left:3px;}
+
+  /* 달력 */
+  .cal-h{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; font-weight:900; font-size:16px;}
+  .cal-nav{background:transparent; border:none; font-size:18px; color:var(--blue); cursor:pointer; padding:5px 14px; font-weight:bold;}
+  .cal-g{display:grid; grid-template-columns:repeat(7,1fr); gap:5px; text-align:center;}
+  .cal-dn{font-size:12px; color:var(--muted); font-weight:bold; padding-bottom:4px;}
+  .cal-d{padding:11px 0; border-radius:8px; background:#f4f6f9; color:#c2c8d0; font-size:14px; font-weight:bold; border:none;}
+  .cal-d.has{background:var(--blue-l); color:#fff; cursor:pointer;}
+  .cal-d.has:active{background:var(--blue); transform:scale(.94);}
+  .cal-d.today{outline:2px solid var(--amber);}
+
+  /* 토스트 */
+  .toast{position:fixed; inset:0; display:flex; justify-content:center; align-items:center; z-index:2000; pointer-events:none; opacity:0; transition:opacity .18s;}
+  .toast.show{opacity:1;}
+  .toast .tc{padding:18px 32px; border-radius:16px; font-size:30px; font-weight:900; color:#fff; transform:scale(.85); transition:transform .18s;}
+  .toast.show .tc{transform:scale(1);}
+  .tc.ok{background:rgba(39,174,96,.95);} .tc.warn{background:rgba(243,156,18,.95);} .tc.bad{background:rgba(192,57,43,.95);}
+</style>
+
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('sw.js')
+            .then(function(reg) { console.log('SW registered'); })
+            .catch(function(err) { console.log('SW error', err); });
+        });
+      }
+    </script>
+</head>
+<body>
+
+<div id="toast" class="toast"><div id="toastTxt" class="tc ok"></div></div>
+
+<input type="file" id="fRoster" accept=".xlsx,.xls" style="position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;">
+<input type="file" id="fLog" accept=".xlsx,.xls" style="position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;">
+<input type="file" id="fBackup" accept=".json,.txt" style="position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;">
+
+<div class="app">
+  <div class="topbar" id="topbar">
+    <div class="brand">📱 전자기기 체크</div>
+    <div class="datechip" id="dateChip" onclick="goToday()" title="오늘로 새로고침">—</div>
+    <div class="logchip off" id="logChip" onclick="$('fLog').click()" title="기숙사일지 연동 상태">📋 일지 미연동</div>
+    <div class="grow"></div>
+    <button class="tbtn blue" onclick="$('fLog').click()">📅 일지 연동</button>
+    <button class="tbtn red" onclick="showMissing()">🚨 미제출 현황</button>
+    <button class="tbtn amber" id="ownBtn" onclick="toggleMode()">🛠️ 보유설정</button>
+    <button class="tbtn icon" onclick="toggleFullscreen()" title="전체화면">⛶</button>
+    <button class="tbtn purple" onclick="openMenu()">☰ 메뉴</button>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-g="1" onclick="switchGrade('1')">1학년<span class="cnt" id="cnt1">-</span></button>
+    <button class="tab" data-g="2" onclick="switchGrade('2')">2학년<span class="cnt" id="cnt2">-</span></button>
+    <button class="tab" data-g="3" onclick="switchGrade('3')">3학년<span class="cnt" id="cnt3">-</span></button>
+  </div>
+
+  <div class="summary" id="summary">
+    <span class="s-tag s-out">학생 명단(엑셀)을 먼저 등록하세요</span>
+    <span class="hint">① 학생 명단 등록 → ② 기기 보유 설정 → ③ 기숙사일지 연동 → ④ 체크</span>
+  </div>
+
+  <div class="listwrap" id="listwrap">
+    <div class="empty">
+      <div class="big">📋</div>
+      <h3>시작하려면 학생 명단을 등록하세요</h3>
+      <p><b>① [☰ 메뉴] → 학생 명단 등록</b> : 남학생방배정.xlsx (한 번만, 자동 저장됨)</p>
+      <p><b>② [🛠️ 보유설정]</b> : 핸드폰·태블릿·노트북 미보유 학생 표시 (한 번만, 자동 저장됨)</p>
+      <p><b>③ [📅 일지 연동]</b> : 매일 기숙사_일지_날짜.xlsx (퇴사·귀가자 자동 음영)</p>
+      <p style="margin-top:8px;"><b>④ 체크</b> : 보유 기기는 회색(제출 기본), <b style="color:#16a085;">미보유는 녹색</b>. <b style="color:#c0392b;">미제출 기기만 눌러</b> 빨강으로 표시 → 빠르게 끝납니다.</p>
+      <p style="margin-top:10px; color:#aab;">명단·보유설정은 자동 저장되며, 미제출 체크는 매일 오전 9시에 자동 초기화됩니다.</p>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="modal"><div class="mcard">
+  <h2 id="mTitle">알림</h2>
+  <div class="mbody" id="mBody"></div>
+  <div class="mfoot" id="mFoot"></div>
+</div></div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const DEVS = [{k:'phone',n:'핸드폰',s:'폰'},{k:'tablet',n:'태블릿',s:'태'},{k:'laptop',n:'노트북',s:'노'}];
+const PFX = 'devck_';
+
+// ── 상태 ──
+let roster = {};       // id -> {name,room,grade}
+let ownership = {};    // id -> {laptop,tablet,phone}  (true=보유)
+let check = {};        // id -> {laptop,tablet,phone}  (true=제출)
+let absentMap = {};    // id -> {cat:'leave'|'home', reason}
+let curDate = '';      // 실제 값은 onload에서 cycleDate()로 설정 (TDZ 회피)
+let activeGrade = '1';
+let mode = 'check';    // 'check' | 'own'
+let calY, calM, calDates = [], calMode = 'local', tempBackup = null;
+
+const RESET_HOUR = 9;  // 매일 오전 9시에 미제출 체크 자동 초기화
+function todayStr(){ const d=new Date(); return ymd(d); }
+function ymd(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+// 체크 사이클 날짜: 오전 9시 이전이면 전날(아직 초기화 전), 9시 이후면 당일
+function cycleDate(){ const d=new Date(); if(d.getHours()<RESET_HOUR) d.setDate(d.getDate()-1); return ymd(d); }
+function defOwn(){ return {laptop:true,tablet:true,phone:true}; }
+function defChk(){ return {}; }   // 비어있음 = 전부 '제출'(기본). false 저장 시 해당 기기 '미제출'
+function isSub(id,dk){ return !(check[id] && check[id][dk]===false); }  // 제출 여부(기본 제출)
+
+// ── 터치 스크롤 허용(리스트/모달), 그 외 차단 ──
+document.addEventListener('touchmove', e=>{
+  if(!e.target.closest('#listwrap') && !e.target.closest('.mbody') && !e.target.closest('.modal')) e.preventDefault();
+}, {passive:false});
+document.body.addEventListener('click', e=>{ if(e.target.tagName==='BUTTON') e.target.blur(); });
+
+// ════════════════════════════════════════════════
+//  초기 로드 (저장된 명단·보유설정 자동 복원 / 09시 사이클 감시)
+// ════════════════════════════════════════════════
+window.onload = function(){
+  try{
+    const r = localStorage.getItem(PFX+'roster'); if(r) roster = JSON.parse(r);
+    const o = localStorage.getItem(PFX+'ownership'); if(o) ownership = JSON.parse(o);
+  }catch(e){}
+  Object.keys(roster).forEach(id=>{ if(!ownership[id]) ownership[id]=defOwn(); });   // 보유설정 누락 보정
+  loadDate(cycleDate());
+  render();
+  // 9시 경계가 지나면 자동으로 새 날짜로 전환(미제출 초기화)
+  setInterval(()=>{
+    const cd=cycleDate();
+    if(cd!==curDate){ loadDate(cd); render(); toast('오전 9시 · 미제출 초기화','ok'); }
+  }, 30000);
+};
+
+function loadDate(dateStr){
+  curDate = dateStr;
+  check = {}; absentMap = {};
+  try{
+    const c = localStorage.getItem(PFX+'check_'+dateStr); if(c) check = JSON.parse(c);
+    const a = localStorage.getItem(PFX+'absent_'+dateStr); if(a) absentMap = JSON.parse(a);
+  }catch(e){}
+  $('dateChip').innerText = '📅 '+dateStr;
+  updateLogChip();
+}
+// 기숙사일지 연동 여부 표시 (당일 기준)
+function updateLogChip(){
+  const el=$('logChip'); if(!el) return;
+  let at=null; try{ at=localStorage.getItem(PFX+'loglinked_'+curDate); }catch(e){}
+  if(at){
+    const cnt=Object.keys(absentMap).length;
+    el.className='logchip on';
+    el.innerText=`✅ 일지 연동됨 (${at}${cnt?' · 제외 '+cnt+'명':''})`;
+  }else{
+    el.className='logchip off';
+    el.innerText='📋 일지 미연동';
+  }
+}
+// 오늘(현재 사이클)로 새로고침 — 과거 보기/복원 후 현재 상태로 복귀
+function goToday(){
+  loadDate(cycleDate()); render();
+  toast('오늘('+curDate+')','ok');
+}
+function saveCheck(){ try{ localStorage.setItem(PFX+'check_'+curDate, JSON.stringify(check)); }catch(e){ toast('저장공간 부족!','bad'); } autoSaveRecord(); }
+function saveAbsent(){ try{ localStorage.setItem(PFX+'absent_'+curDate, JSON.stringify(absentMap)); }catch(e){} autoSaveRecord(); }
+function saveRoster(){ try{ localStorage.setItem(PFX+'roster', JSON.stringify(roster)); }catch(e){ toast('저장공간 부족!','bad'); } }
+function saveOwnership(){ try{ localStorage.setItem(PFX+'ownership', JSON.stringify(ownership)); }catch(e){} }
+
+// ════════════════════════════════════════════════
+//  토스트
+// ════════════════════════════════════════════════
+let toastT;
+function toast(txt, kind='ok'){
+  const o=$('toast'), c=$('toastTxt');
+  c.innerText=txt; c.className='tc '+kind; o.classList.add('show');
+  clearTimeout(toastT); toastT=setTimeout(()=>o.classList.remove('show'), 900);
+}
+
+// ════════════════════════════════════════════════
+//  1) 학생 명단 등록 (남학생방배정 시트, 학년=블록 위치)
+// ════════════════════════════════════════════════
+$('fRoster').addEventListener('change', function(e){
+  const file=e.target.files[0]; if(!file) return;
+  const fr=new FileReader();
+  fr.onload=ev=>{
+    try{
+      const wb=XLSX.read(new Uint8Array(ev.target.result),{type:'array'});
+      const sheet = wb.Sheets['남학생방배정'] || wb.Sheets['학번순방배정공지'] || wb.Sheets[wb.SheetNames[0]];
+      const grid=XLSX.utils.sheet_to_json(sheet,{header:1,defval:''});
+      // '학번' 헤더 컬럼 찾기 → 블록(=학년) 결정
+      let hakCols=[];
+      for(const row of grid){
+        row.forEach((v,ci)=>{ if(String(v).trim()==='학번') hakCols.push(ci); });
+        if(hakCols.length) break;
+      }
+      hakCols=[...new Set(hakCols)].sort((a,b)=>a-b);
+      if(hakCols.length===0){ alert('명단을 읽지 못했습니다.\n시트에 "학번/이름/호실" 헤더가 있는지 확인하세요.'); return; }
+      const newRoster={};
+      hakCols.forEach((hc,gi)=>{
+        const grade=String(gi+1);
+        grid.forEach(row=>{
+          const v=String(row[hc]??'').trim();
+          if(/^\d{4}$/.test(v)){
+            const name=String(row[hc+1]??'').trim();
+            const room=String(row[hc+2]??'').trim();
+            if(name && name!=='이름' && name!=='undefined') newRoster[v]={name,room,grade};
+          }
+        });
+      });
+      if(Object.keys(newRoster).length===0){ alert('학번(4자리)을 찾지 못했습니다. 파일 구조를 확인하세요.'); return; }
+      roster=newRoster;
+      // 보유설정: 기존 유지, 신규 학생만 기본값
+      const newOwn={};
+      Object.keys(roster).forEach(id=> newOwn[id]= ownership[id] || defOwn());
+      ownership=newOwn;
+      saveRoster(); saveOwnership();
+      const gc={1:0,2:0,3:0}; Object.values(roster).forEach(s=>gc[s.grade]++);
+      closeModal();
+      render();
+      toast('명단 '+Object.keys(roster).length+'명 등록','ok');
+      alert(`학생 명단 등록 완료\n\n1학년 ${gc[1]}명 / 2학년 ${gc[2]}명 / 3학년 ${gc[3]}명 (총 ${Object.keys(roster).length}명)\n\n명단은 기기에 저장되었습니다. 다음에는 다시 등록하지 않아도 됩니다.\n이제 [기기 보유 설정]에서 기기가 없는 학생을 표시하세요.`);
+    }catch(err){ alert('엑셀을 읽지 못했습니다.\n'+err.message); }
+    e.target.value='';
+  };
+  fr.readAsArrayBuffer(file);
+});
+
+// ════════════════════════════════════════════════
+//  2) 기숙사일지 연동 (기숙사입실현황 시트 → 퇴사/귀가 음영)
+// ════════════════════════════════════════════════
+$('fLog').addEventListener('change', function(e){
+  const file=e.target.files[0]; if(!file) return;
+  if(Object.keys(roster).length===0){ alert('먼저 [☰ 메뉴 → 학생 명단 등록]을 해주세요.'); e.target.value=''; return; }
+  // 파일명에서 날짜 추출(참고용)
+  let fileDate='';
+  const m=file.name.match(/(?<![0-9])(\d{4})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])(?![0-9])/);
+  if(m) fileDate=`${m[1]}-${m[2]}-${m[3]}`;
+  const fr=new FileReader();
+  fr.onload=ev=>{
+    try{
+      const wb=XLSX.read(new Uint8Array(ev.target.result),{type:'array'});
+      const sheet=wb.Sheets['기숙사입실현황'];
+      if(!sheet){ alert('이 파일에 [기숙사입실현황] 시트가 없습니다.'); e.target.value=''; return; }
+      const grid=XLSX.utils.sheet_to_json(sheet,{header:1,defval:''});
+      const ab={}; let section=null;
+      grid.forEach(row=>{
+        const joined=row.map(x=>String(x)).join(' ');
+        if(joined.includes('귀가자')) section='home';
+        else if(joined.includes('미입사자')||joined.includes('퇴사자')) section='leave';
+        row.forEach((v,ci)=>{
+          const s=String(v).trim();
+          if(/^\d{4}$/.test(s) && roster[s] && section && !ab[s]){
+            const rest=[];
+            for(let k=ci+1;k<row.length;k++){ const t=String(row[k]).trim(); if(t) rest.push(t); }
+            ab[s]={cat:section, reason: rest.slice(1,3).join(' ')};
+          }
+        });
+      });
+      // 현재 사이클(오늘) 날짜에 부재 반영
+      loadDate(cycleDate());
+      absentMap=ab; saveAbsent();
+      const now=new Date(); const hhmm=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+      try{ localStorage.setItem(PFX+'loglinked_'+curDate, hhmm); }catch(e){}
+      updateLogChip();
+      const leave=Object.values(ab).filter(x=>x.cat==='leave').length;
+      const home=Object.values(ab).filter(x=>x.cat==='home').length;
+      render();
+      toast('✅ 일지 연동 완료','ok');
+      const warn=(fileDate && fileDate!==curDate)? `\n\n⚠️ 파일 날짜(${fileDate})가 오늘(${curDate})과 다릅니다. 오늘 기준으로 적용했습니다.` : '';
+      alert(`기숙사일지 연동 완료\n\n📅 기준일: ${curDate}\n퇴사/미입사 ${leave}명, 귀가 ${home}명을 체크 대상에서 제외(음영)했습니다.${warn}`);
+    }catch(err){ alert('일지를 읽지 못했습니다.\n'+err.message); }
+    e.target.value='';
+  };
+  fr.readAsArrayBuffer(file);
+});
+
+// ════════════════════════════════════════════════
+//  모드 전환 (체크 ↔ 기기보유설정)
+// ════════════════════════════════════════════════
+function toggleMode(){
+  if(Object.keys(roster).length===0){ alert('먼저 학생 명단을 등록하세요. (☰ 메뉴)'); return; }
+  mode = (mode==='check') ? 'own' : 'check';
+  const bar=$('topbar'), btn=$('ownBtn');
+  if(mode==='own'){
+    bar.classList.add('ownmode'); btn.classList.add('active'); btn.innerText='✅ 설정 완료';
+    toast('보유 설정: 미보유 기기 탭(초록)','warn');
+  }else{
+    bar.classList.remove('ownmode'); btn.classList.remove('active'); btn.innerText='🛠️ 보유설정';
+    saveOwnership();
+  }
+  render();
+}
+
+// ════════════════════════════════════════════════
+//  학년 탭
+// ════════════════════════════════════════════════
+function switchGrade(g){
+  activeGrade=g;
+  document.querySelectorAll('.tab').forEach(t=> t.classList.toggle('active', t.dataset.g===g));
+  render();
+}
+
+// ════════════════════════════════════════════════
+//  렌더링 (학번순 · 스크롤 없는 자동 타일 그리드)
+// ════════════════════════════════════════════════
+function gradeStudents(g){
+  return Object.keys(roster).filter(id=>roster[id].grade===g)
+    .map(id=>({id,...roster[id]}))
+    .sort((a,b)=> a.id.localeCompare(b.id, undefined, {numeric:true}));   // 학번순
+}
+
+// 화면(W×H)에 n명을 스크롤 없이 채우는 행/열 수 계산 (세로 화면 우선, 세로 우선 배치)
+function computeLayout(n, W, H){
+  let best=null;
+  const maxC=Math.max(1, Math.floor(W/120));   // '학번 이름'이 들어갈 최소 폭 확보
+  for(let C=1; C<=maxC; C++){
+    const R=Math.ceil(n/C);
+    const tw=W/C, th=H/R;
+    if(th<32) continue;
+    const score=Math.abs((tw/th)-2.4);          // 가로:세로 약 2.4:1 타일 선호(세로화면 가독성)
+    if(!best || score<best.score) best={C,R,score};
+  }
+  if(!best){ const C=maxC; best={C, R:Math.ceil(n/C)}; }
+  return best;
+}
+
+function render(){
+  updateTabCounts();
+  const wrap=$('listwrap');
+  if(Object.keys(roster).length===0){ updateSummary(); return; }
+  const list=gradeStudents(activeGrade);
+  const GAP=5;
+  const W=Math.max(200, wrap.clientWidth-12), H=Math.max(200, wrap.clientHeight-12);
+  const lay=computeLayout(list.length, W, H);              // 학년 인원에 맞춰 열/행 결정 (최대 120명까지 수용)
+  const R=lay.R;                                           // 행 수 (1fr로 화면을 빈틈없이 채움)
+  const th=(H - (R-1)*GAP)/R;                              // 글자 크기 산정용 칸 높이
+  const nm  =Math.max(11, Math.min(18, Math.round(th*0.33)));
+  const chip=Math.max(11, Math.min(17, Math.round(th*0.30)));
+  const meta=Math.max(8,  Math.min(13, Math.round(th*0.20)));
+  let html=`<div class="grid" style="grid-auto-flow:column; grid-auto-columns:1fr; grid-template-rows:repeat(${R}, 1fr); --nm:${nm}px; --chip:${chip}px; --meta:${meta}px;">`;
+  list.forEach(s=> html+=tileHTML(s));
+  html+=`</div>`;
+  wrap.innerHTML=html;
+  updateSummary();
+}
+
+function tileHTML(s){
+  const ab=absentMap[s.id];
+  if(ab && mode==='check'){
+    const cls = ab.cat==='leave' ? 'leave' : 'home';
+    const lbl = ab.cat==='leave' ? '⛔ 퇴사/미입사' : '🏠 귀가';
+    return `<div class="tile out ${cls}"><div class="top"><span class="sid">${s.id}</span><span class="nm">${s.name}</span><span class="meta">${s.room}</span></div>`+
+           `<div class="outlbl">${lbl}</div></div>`;
+  }
+  return `<div class="tile"><div class="top"><span class="sid">${s.id}</span><span class="nm">${s.name}</span><span class="meta">${s.room}</span></div>`+
+         `<div class="chips">`+ DEVS.map(d=>chipHTML(s.id,d)).join('') +`</div></div>`;
+}
+
+function chipHTML(id, d){
+  const own = ownership[id] ? ownership[id][d.k] : true;
+  if(mode==='own'){
+    return `<div class="chip ${own?'own':'notown'}" data-id="${id}" data-dk="${d.k}"><span class="lab">${d.s}</span></div>`;
+  }
+  if(!own) return `<div class="chip none" data-id="${id}" data-dk="${d.k}"><span class="lab">${d.s}</span></div>`;
+  const sub=isSub(id,d.k);
+  return `<div class="chip ${sub?'done':'miss'}" data-id="${id}" data-dk="${d.k}"><span class="lab">${d.s}</span></div>`;
+}
+
+// 칩 탭(위임)
+$('listwrap').addEventListener('click', e=>{
+  const chip=e.target.closest('.chip'); if(!chip) return;
+  const id=chip.dataset.id, dk=chip.dataset.dk; if(!id) return;
+  if(mode==='own'){                                   // 기기 보유 설정 토글
+    if(!ownership[id]) ownership[id]=defOwn();
+    ownership[id][dk]=!ownership[id][dk]; saveOwnership();
+    chip.className='chip '+(ownership[id][dk]?'own':'notown');
+    return;
+  }
+  if(chip.classList.contains('none')) return;          // 미보유는 체크 안 함
+  const wasSub=isSub(id,dk);
+  if(!check[id]) check[id]={};
+  if(wasSub) check[id][dk]=false; else check[id][dk]=true;   // 제출(기본) ↔ 미제출
+  saveCheck();
+  const sub=isSub(id,dk);
+  chip.className='chip '+(sub?'done':'miss');
+  toast(sub?'제출 처리':'🚨 미제출', sub?'ok':'warn');
+  updateSummary(); updateTabCounts();
+});
+
+// 화면 회전/크기 변경 시 재배치
+let _rT; window.addEventListener('resize', ()=>{ clearTimeout(_rT); _rT=setTimeout(render, 150); });
+
+// ── 집계 ──
+function computeStats(g){
+  let target=0, done=0, out=0;
+  Object.keys(roster).forEach(id=>{
+    if(roster[id].grade!==g) return;
+    if(absentMap[id]){ out++; return; }
+    const ow=ownership[id]||defOwn();
+    DEVS.forEach(d=>{ if(ow[d.k]){ target++; if(isSub(id,d.k)) done++; } });
+  });
+  return {target, done, miss:target-done, out};
+}
+// 인원 기준 집계 (총원/부재/현재원/미제출자)
+function gradeStat(g){
+  let total=0, out=0, missPpl=0;
+  Object.keys(roster).forEach(id=>{
+    if(roster[id].grade!==g) return;
+    total++;
+    if(absentMap[id]){ out++; return; }
+    const ow=ownership[id]||defOwn();
+    if(DEVS.some(d=> ow[d.k] && !isSub(id,d.k))) missPpl++;
+  });
+  return {total, out, present:total-out, missPpl};
+}
+function updateSummary(){
+  const s=$('summary');
+  if(Object.keys(roster).length===0){
+    s.innerHTML=`<span class="s-tag s-out">학생 명단(엑셀)을 먼저 등록하세요</span><span class="hint">① 명단 등록 → ② 기기 보유 설정 → ③ 일지 연동 → ④ 체크</span>`;
+    return;
+  }
+  if(mode==='own'){
+    s.innerHTML=`<span class="s-tag" style="background:#fff4e0;color:var(--amber-d);">🛠️ 기기 보유 설정 모드</span>`+
+                `<span class="hint">기기가 <b>없는</b> 학생의 해당 칸을 눌러 '미보유'(초록)로 바꾸세요. 완료 후 [설정 완료]를 누르면 자동 저장됩니다.</span>`;
+    return;
+  }
+  const st=gradeStat(activeGrade);
+  s.innerHTML=
+    `<span class="s-tag s-target">총원 ${st.total}</span>`+
+    `<span class="s-tag s-out">부재 ${st.out}</span>`+
+    `<span class="s-tag s-done">현재원 ${st.present}</span>`+
+    `<span class="s-tag s-miss">미제출자 ${st.missPpl}</span>`+
+    `<span class="hint">${activeGrade}학년 · ${curDate} · 보유=회색·미보유=녹색, 미제출만 탭(빨강)</span>`;
+}
+function updateTabCounts(){
+  ['1','2','3'].forEach(g=>{
+    const el=$('cnt'+g); if(!el) return;
+    if(Object.keys(roster).length===0){ el.innerText='-'; return; }
+    el.innerText = `미제출 ${gradeStat(g).missPpl}명`;
+  });
+}
+
+// ════════════════════════════════════════════════
+//  6) 미제출 현황 (벌점용)
+// ════════════════════════════════════════════════
+function buildMissing(){
+  const res={1:[],2:[],3:[]};
+  const devCnt={laptop:0,tablet:0,phone:0};
+  Object.keys(roster).forEach(id=>{
+    if(absentMap[id]) return;
+    const s=roster[id], ow=ownership[id]||defOwn();
+    const missed=DEVS.filter(d=> ow[d.k] && !isSub(id,d.k));
+    if(missed.length){
+      missed.forEach(d=> devCnt[d.k]++);
+      res[s.grade].push({id, name:s.name, room:s.room, devs:missed.map(d=>d.n)});
+    }
+  });
+  Object.keys(res).forEach(g=> res[g].sort((a,b)=> a.id.localeCompare(b.id,undefined,{numeric:true})));
+  return {res, devCnt};
+}
+function showMissing(){
+  if(Object.keys(roster).length===0){ alert('학생 명단을 먼저 등록하세요.'); return; }
+  const {res,devCnt}=buildMissing();
+  const totalPpl=res[1].length+res[2].length+res[3].length;
+  let body=`<div class="note">📅 ${curDate} 기준 · 미제출 학생만 표시됩니다. (퇴사·귀가 등 제외 학생은 자동 제외)</div>`;
+  body+=`<div class="secbox"><div class="st">📊 미제출 합계</div>`+
+        `미제출 학생 <b>${totalPpl}명</b><br>`+
+        `핸드폰 <b>${devCnt.phone}</b> · 태블릿 <b>${devCnt.tablet}</b> · 노트북 <b>${devCnt.laptop}</b> (대수)</div>`;
+  ['1','2','3'].forEach(g=>{
+    const arr=res[g];
+    body+=`<div class="miss-grp"><div class="g">${g}학년 미제출 ${arr.length}명</div>`;
+    if(arr.length===0) body+=`<div style="color:var(--muted); font-size:13px; padding:4px 2px;">전원 제출 완료 ✅</div>`;
+    arr.forEach(m=>{
+      body+=`<div class="miss-row"><span class="m-name">${m.name} <span style="color:var(--muted);font-weight:600;">${m.id}·${m.room}호</span></span>`+
+            `<span class="m-dev">${m.devs.map(d=>'<span class="pill">'+d+'</span>').join('')}</span></div>`;
+    });
+    body+=`</div>`;
+  });
+  openModal('🚨 미제출 현황 (벌점 대상)', body,
+    `<button class="pbtn blue" onclick="exportMissingExcel()">📥 미제출 명단 엑셀 저장</button>`+
+    `<button class="pbtn gray" onclick="closeModal()">닫기</button>`);
+}
+
+// 오늘 기록을 history에 자동 저장(달력/백업용) — 체크할 때마다 자동 호출
+function autoSaveRecord(){
+  if(Object.keys(roster).length===0) return;
+  const {res,devCnt}=buildMissing();
+  let stT={target:0,done:0,out:0};
+  ['1','2','3'].forEach(g=>{ const s=computeStats(g); stT.target+=s.target; stT.done+=s.done; stT.out+=s.out; });
+  const detail=[];
+  ['1','2','3'].forEach(g=> res[g].forEach(m=> detail.push({g, id:m.id, name:m.name, room:m.room, devs:m.devs.join('/')})));
+  const rec={
+    date:curDate, total:Object.keys(roster).length, out:stT.out,
+    target:stT.target, done:stT.done, miss:stT.target-stT.done,
+    missPpl: res[1].length+res[2].length+res[3].length,
+    laptop:devCnt.laptop, tablet:devCnt.tablet, phone:devCnt.phone,
+    detail
+  };
+  try{ localStorage.setItem(PFX+'history_'+curDate, JSON.stringify(rec)); }catch(e){}
+}
+
+// ════════════════════════════════════════════════
+//  미제출 명단 엑셀 (벌점 부여용)
+// ════════════════════════════════════════════════
+async function exportMissingExcel(){
+  const {res}=buildMissing();
+  const rows=[['일자','학년','학번','이름','호실','미제출기기']];
+  ['1','2','3'].forEach(g=> res[g].forEach(m=> rows.push([curDate, g+'학년', m.id, m.name, m.room, m.devs.join(', ')])));
+  if(rows.length===1){ alert('미제출 학생이 없습니다.'); return; }
+  const ws=XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols']=[{wch:12},{wch:8},{wch:8},{wch:12},{wch:8},{wch:24}];
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'미제출명단');
+  const out=XLSX.write(wb,{bookType:'xlsx',type:'array'});
+  const blob=new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const fn=`전자기기_미제출_${curDate}.xlsx`;
+  const r=await saveBlob(blob,fn,'xlsx');
+  if(r.aborted) return;
+  alert(r.success? `미제출 명단을 저장했습니다.\n파일명: ${r.savedName||fn}` : '저장 실패');
+}
+
+// ════════════════════════════════════════════════
+//  백업 / 복원 · 기록 관리
+// ════════════════════════════════════════════════
+function openMenu(){
+  const hasRoster=Object.keys(roster).length>0;
+  const body=
+    `<div class="secbox"><div class="st">⚙️ 설정 (자동 저장 · 수정 전까지 유지)</div>
+       <button class="pbtn" style="background:#16a085;" onclick="$('fRoster').click();">📁 학생 명단 등록 (남학생방배정.xlsx)</button>
+       <button class="pbtn amber" onclick="closeModal(); toggleMode();">🛠️ 기기 보유 설정</button>
+       <div style="font-size:12px;color:var(--muted);margin-top:4px;">등록된 명단: <b>${hasRoster?Object.keys(roster).length+'명':'없음'}</b> · 한 번 설정하면 다음에 열 때 그대로 유지됩니다.</div>
+     </div>
+     <div class="secbox"><div class="st">📅 과거 기록</div>
+       <div style="font-size:12px;color:var(--muted);margin-bottom:9px;">날짜별 미제출자 기록을 달력에서 확인합니다. (체크할 때마다 자동 저장)</div>
+       <button class="pbtn blue" onclick="openHistory()">📅 날짜별 미제출 기록 보기</button>
+     </div>
+     <div class="secbox" style="border-color:#f8c471; background:#fdf6ec;">
+       <div class="st" style="color:var(--amber-d);">🛟 백업 / 복원</div>
+       <div style="font-size:12px;color:var(--muted);margin-bottom:9px;">명단·기기보유설정·모든 기록을 파일 하나로 저장/복원합니다. 기기 변경이나 초기화에 대비해 가끔 백업해 두세요.</div>
+       <button class="pbtn green" onclick="exportFullBackup()">💾 백업 (파일로 저장)</button>
+       <button class="pbtn purple" onclick="$('fBackup').click()">📂 복원 (파일 불러오기)</button>
+     </div>`;
+  openModal('☰ 메뉴', body, `<button class="pbtn gray" onclick="closeModal()">닫기</button>`);
+}
+
+// 전체화면
+function toggleFullscreen(){
+  const el=document.documentElement;
+  if(!document.fullscreenElement && !document.webkitFullscreenElement){
+    (el.requestFullscreen||el.webkitRequestFullscreen||function(){}).call(el);
+  }else{
+    (document.exitFullscreen||document.webkitExitFullscreen||function(){}).call(document);
+  }
+  setTimeout(render, 300);
+}
+document.addEventListener('fullscreenchange', ()=> setTimeout(render,150));
+
+// 과거 기록 달력
+function openHistory(){
+  const keys=Object.keys(localStorage).filter(k=>k.startsWith(PFX+'history_'));
+  calDates=keys.map(k=>k.replace(PFX+'history_','')); calMode='local';
+  const latest=calDates.slice().sort().reverse()[0];
+  if(latest){ calY=+latest.split('-')[0]; calM=+latest.split('-')[1]; }
+  else{ const n=new Date(); calY=n.getFullYear(); calM=n.getMonth()+1; }
+  const body=`<div class="note">파란 날짜를 누르면 그날 <b>미제출자</b>를 봅니다. (노란 테두리=오늘) · 미제출 인원이 있던 날만 표시됩니다.</div><div id="calBox">${calHTML()}</div>`;
+  openModal('📅 과거 미제출 기록', body, `<button class="pbtn slate" onclick="goToday(); closeModal();">🔄 오늘 화면으로</button><button class="pbtn gray" onclick="openMenu()">메뉴로</button>`);
+}
+
+// 전체 백업(JSON)
+async function exportFullBackup(){
+  const history={}, checks={}, absents={}, loglinked={};
+  Object.keys(localStorage).filter(k=>k.startsWith(PFX+'history_')).forEach(k=> history[k.replace(PFX+'history_','')]=JSON.parse(localStorage.getItem(k)));
+  Object.keys(localStorage).filter(k=>k.startsWith(PFX+'check_')).forEach(k=> checks[k.replace(PFX+'check_','')]=JSON.parse(localStorage.getItem(k)));
+  Object.keys(localStorage).filter(k=>k.startsWith(PFX+'absent_')).forEach(k=> absents[k.replace(PFX+'absent_','')]=JSON.parse(localStorage.getItem(k)));
+  Object.keys(localStorage).filter(k=>k.startsWith(PFX+'loglinked_')).forEach(k=> loglinked[k.replace(PFX+'loglinked_','')]=localStorage.getItem(k));
+  const data={type:'devck-fullbackup', ver:1, savedAt:new Date().toISOString(), roster, ownership, history, checks, absents, loglinked};
+  const blob=new Blob([JSON.stringify(data)],{type:'application/json'});
+  const fn=`전자기기체크_백업_${todayStr()}.json`;
+  let file=null; try{ file=new File([blob],fn,{type:'application/json'}); }catch(e){}
+  if(file && navigator.canShare && navigator.canShare({files:[file]})){
+    try{ await navigator.share({title:'전자기기 체크 백업', text:fn, files:[file]}); return; }
+    catch(err){ if(err.name==='AbortError') return; }
+  }
+  const r=await saveBlob(blob,fn,'json');
+  if(r.aborted) return;
+  alert(r.success? `백업 저장 완료\n파일명: ${r.savedName||fn}\n\n이 파일을 안전한 곳에 보관하세요.` : '저장 실패');
+}
+$('fBackup').addEventListener('change', function(e){
+  const file=e.target.files[0]; if(!file) return;
+  const fr=new FileReader();
+  fr.onload=ev=>{
+    try{
+      const d=JSON.parse(ev.target.result);
+      if(!d || (!d.roster && !d.history)){ alert('올바른 백업 파일이 아닙니다.'); e.target.value=''; return; }
+      if(!confirm('복원을 진행합니다.\n현재 기기의 명단·설정·기록이 백업 파일 내용으로 대체/병합됩니다.\n계속할까요?')){ e.target.value=''; return; }
+      if(d.roster){ roster=d.roster; saveRoster(); }
+      if(d.ownership){ ownership=d.ownership; saveOwnership(); }
+      let cnt=0;
+      if(d.history) for(const dt in d.history){ localStorage.setItem(PFX+'history_'+dt, JSON.stringify(d.history[dt])); cnt++; }
+      if(d.checks) for(const dt in d.checks) localStorage.setItem(PFX+'check_'+dt, JSON.stringify(d.checks[dt]));
+      if(d.absents) for(const dt in d.absents) localStorage.setItem(PFX+'absent_'+dt, JSON.stringify(d.absents[dt]));
+      if(d.loglinked) for(const dt in d.loglinked) localStorage.setItem(PFX+'loglinked_'+dt, d.loglinked[dt]);
+      Object.keys(roster).forEach(id=>{ if(!ownership[id]) ownership[id]=defOwn(); });
+      loadDate(cycleDate()); render(); closeModal();
+      alert(`복원 완료\n\n명단 ${Object.keys(roster).length}명, 기록 ${cnt}일치를 복원했습니다.`);
+    }catch(err){ alert('복원 오류: '+err.message); }
+    e.target.value='';
+  };
+  fr.readAsText(file);
+});
+
+// ── 달력 ──
+function calHTML(){
+  const first=new Date(calY,calM-1,1).getDay();
+  const days=new Date(calY,calM,0).getDate();
+  let h=`<div class="cal-h"><button class="cal-nav" onclick="calMove(-1)">◀</button><span>${calY}년 ${calM}월</span><button class="cal-nav" onclick="calMove(1)">▶</button></div><div class="cal-g">`;
+  ['일','월','화','수','목','금','토'].forEach((d,i)=> h+=`<div class="cal-dn" style="color:${i===0?'#e74c3c':i===6?'#3498db':'#7f8c8d'}">${d}</div>`);
+  for(let i=0;i<first;i++) h+=`<div></div>`;
+  for(let i=1;i<=days;i++){
+    const ds=`${calY}-${String(calM).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
+    const has=calDates.includes(ds), today=ds===todayStr();
+    h+= has ? `<button class="cal-d has ${today?'today':''}" data-d="${ds}">${i}</button>`
+            : `<div class="cal-d ${today?'today':''}">${i}</div>`;
+  }
+  return h+`</div>`;
+}
+function calMove(d){ calM+=d; if(calM<1){calM=12;calY--;} if(calM>12){calM=1;calY++;} $('calBox').innerHTML=calHTML(); }
+document.addEventListener('click', ev=>{ const c=ev.target.closest&&ev.target.closest('[data-d]'); if(c) viewRecord(c.dataset.d); });
+function viewRecord(dt){
+  const r = (calMode==='local') ? JSON.parse(localStorage.getItem(PFX+'history_'+dt)||'null') : (tempBackup&&tempBackup[dt]);
+  if(!r){ alert('기록이 없습니다.'); return; }
+  let body=`<div class="secbox"><div class="st">📊 ${dt} 요약</div>
+    총원 ${r.total}명 / 제외 ${r.out}명<br>
+    대상기기 ${r.target} · 제출 ${r.done} · <b style="color:var(--red-d)">미제출 ${r.miss}</b><br>
+    미제출 인원 <b>${r.missPpl}명</b> (핸드폰 ${r.phone}·태블릿 ${r.tablet}·노트북 ${r.laptop})</div>`;
+  if(r.detail && r.detail.length){
+    body+=`<div class="secbox"><div class="st">🚨 미제출 상세</div>`;
+    r.detail.forEach(m=> body+=`<div class="miss-row"><span class="m-name">${m.name} <span style="color:var(--muted);font-weight:600;">${m.g}학년·${m.room}호</span></span><span class="m-dev">${m.devs}</span></div>`);
+    body+=`</div>`;
+  }
+  openModal(`[${dt}] 미제출 기록`, body, `<button class="pbtn gray" onclick="openHistory()">달력으로</button>`);
+}
+
+// ── 파일 저장 공통 ──
+function isMobile(){ try{ if(navigator.userAgentData&&navigator.userAgentData.mobile) return true; }catch(e){}
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent||''); }
+async function saveBlob(blob, fileName, kind){
+  if(!blob||blob.size===0){ return {success:false,aborted:true}; }
+  if(!isMobile() && window.showSaveFilePicker){
+    try{
+      const types = kind==='xlsx' ? [{description:'Excel',accept:{'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':['.xlsx']}}]
+        : kind==='json' ? [{description:'JSON',accept:{'application/json':['.json']}}]
+        : [{description:'텍스트',accept:{'text/plain':['.txt']}}];
+      const h=await window.showSaveFilePicker({suggestedName:fileName,types});
+      const w=await h.createWritable(); await w.write(blob); await w.close();
+      return {success:true,savedName:h.name};
+    }catch(e){ if(e.name==='AbortError') return {success:false,aborted:true}; }
+  }
+  try{ const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=fileName;
+    document.body.appendChild(a); a.click();
+    setTimeout(()=>{ try{document.body.removeChild(a);}catch(e){} URL.revokeObjectURL(url); },15000);
+    return {success:true,savedName:fileName,fallback:true};
+  }catch(e){ return {success:false,error:e.message}; }
+}
+
+// ── 모달 ──
+function openModal(title, body, foot){ $('mTitle').innerHTML=title; $('mBody').innerHTML=body; $('mFoot').innerHTML=foot||''; $('modal').classList.add('show'); }
+function closeModal(){ $('modal').classList.remove('show'); }
+$('modal').addEventListener('click', e=>{ if(e.target===$('modal')) closeModal(); });
+</script>
+</body>
+</html>
